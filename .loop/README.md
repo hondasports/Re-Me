@@ -1,23 +1,57 @@
-# Re:Me Agent Loop v5
+# Re:Me Agent Loop v6
 
-Re:Me Agent Loop v5 は、v4 の Risk / Evidence / deterministic enforcement 方針を維持しつつ、kakeibo Agent Loop v12 と GPT-6 Astra のモデルガイドを参考に、**止まりにくさ・指示追従・検証の適正化**を強化する。
+Re:Me Agent Loop v6は、v5のRisk / Evidence / deterministic enforcementを維持しつつ、KakeiboのAgent OSとletwir/CODEXのeffect-first / routing / compact handoff思想をRe:Me向けに取り込む。
 
-1. **Instruction priority** — current user instruction を一般的なSkill guidanceより優先し、曖昧なSkill文言で作業を止めない
-2. **Autonomy** — 許可済みのread-only / reversible / review / fix / PR作業は追加確認なしでconcrete resultまで進める
-3. **Mid-turn steering** — 作業途中の追加指示で全loopをrestartせず、affected contract / Evidenceだけdelta更新する
-4. **Calibrated verification** — low-impact変更で実装を鏡写しするだけのtestや、PASS後の無根拠なfull check拡大を避ける
-5. **Focused delegation** — subagentはwall-clock短縮か独立coverage改善にmaterialに効く時だけ使う
-6. **Task-state isolation** — tracked templateとcurrent task instanceを分離し、過去taskの文脈汚染を防ぐ
-7. **Re:Me protected behavior** — sealed content、immutability、authorization、delivery idempotency、private R2等の強い境界は削らない
+新しい中心構造は次。
 
-正本:
+```text
+User request
+  ↓
+AGENTS.md
+  ↓
+.loop/agent-os.yaml
+  ├─ Effect
+  ├─ Task type / Complexity
+  ├─ Route
+  └─ Role
+  ↓
+.loop/process.yaml
+  ├─ Spec Confidence
+  ├─ Risk / Required Controls
+  ├─ Coverage / Finding
+  ├─ Verification / Review
+  └─ Delivery / Aftercare
+  ↓
+skills/*
+  ↓
+deterministic scripts
+```
 
-- `AGENTS.md` — 常時保持する最小のloop不変条件 + Re:Me固有Product/Architecture contract
-- `.loop/process.yaml` — compactな機械可読contract
-- `.loop/templates/task-state.yaml` — trackedな再利用用schema/template。task固有値を入れない
-- `.loop/state/<task-id>.yaml` — current task instance / Coverage Map / Finding / telemetry（worktree-local・ignored）
-- `skills/*/SKILL.md` — current stateの詳細
-- `scripts/check-loop-evidence.mjs` / `scripts/check-task-worktree.mjs` / `scripts/check-local-e2e-gate.mjs` / `scripts/sync-worktree-e2e-env.mjs` / `scripts/check-pr-aftercare.mjs` — deterministic enforcement
+## Source of truth
+
+### Normative
+
+- `AGENTS.md` — 常時contextに置く最小の実行契約 + protected product invariants
+- `.loop/agent-os.yaml` — Effect / classifier / route / role / handoff
+- `.loop/process.yaml` — Risk / Controls / Verification / Finding / Delivery
+- `.loop/templates/task-state.yaml` — tracked schema/template
+- `.loop/state/<task-id>.yaml` — current task instance（ignored）
+- `skills/*/SKILL.md` — stage / conditional detail
+
+### Explanatory
+
+- `.loop/AGENT_OS.md` — Agent OSの背景と人間向け説明
+- このREADME — Loop全体の概要
+
+### Deterministic enforcement
+
+- `scripts/check-loop-evidence.mjs`
+- `scripts/check-task-worktree.mjs`
+- `scripts/check-task-state-template.mjs`
+- `scripts/check-local-e2e-gate.mjs`
+- `scripts/check-pr-aftercare.mjs`
+
+文書とScriptが矛盾した場合は、Scriptを正本に昇格させず、normative contractを確認してenforcementを修正する。
 
 ## Design principle
 
@@ -32,158 +66,97 @@ Quality = confirmed contract
 
 Gate数・Agent数・文書量を品質指標にしない。
 
+## Agent OS
+
+Agent OSはworkflowを置き換えない。依頼ごとに必要なworkflowの深さを選ぶ。
+
+| Route | 主用途 |
+| --- | --- |
+| `read_only` | 調査・Issue/CI分析 |
+| `fast` | tiny/small + R0/R1 + protected behavior変更なし |
+| `standard` | medium / R2 / protected behavior / review Control |
+| `deep` | large / R3/R4 / cross-cutting / migration |
+
+route短縮よりRequired Controlを優先する。`fast`でもuser-visible flow変更ならbrowser E2Eを実行する。
+
+## Effect-first
+
+EffectはHuman Gateを「task全体」ではなく「具体的operation」へ束縛するために使う。
+
+例:
+
 ```text
-PREPARE → IMPLEMENT → VERIFY → REVIEW? → DELIVER → AFTERCARE → DONE
+production D1 migrationを伴うfeature
+  ↓
+調査・実装・test・review・PR・CI
+  ↓
+production_data_migration
+  ↓
+Human Gate
 ```
 
-Human Gate / Incident / Process Learningは具体的trigger時だけ。
-
----
-
-## Instruction priority
-
-優先順位は次の通り。
-
-1. platform / non-bypassable safety
-2. current explicit user instruction
-3. latest explicitly approved spec / ADR
-4. `AGENTS.md` / `.loop/process.yaml`
-5. current / triggered Skill
-6. explanatory docs
-
-Skillは、すでにユーザーが許可したreversible/read-only/review/fix/PR作業を独自に狭める権限として扱わない。
-
-Skillがpermission確認・停止・未完了を要求すると解釈した場合は、exact `SKILL.md` pathと該当箇所を示して、その解釈が本当にmaterialか確認する。
-
-Safety invariantはこの優先順位で上書きしない。
-
-## Autonomy / Human Gate
-
-次は追加permissionなしで進める。
-
-- read-only discovery
-- reversible repository edit
-- review / fix
-- tests / verification
-- dedicated branch作成
-- requested / implied PR create or update
-
-質問や承認要求の前に、cheapな許可済み調査とreversibleな準備を終え、具体的なreviewable resultを作る。
-
-Human Gateは次のような**具体的trigger**へ束縛する。
-
-- authorized discovery後もmaterial choiceが残る
-- production write
-- irreversible / bulk state mutation
-- production secret / credential rotation
-- production DNS / domain cutover
-- production data migration / cutover
-- protected findingのaccept
-
-**R4分類だけではHuman Gateを起動しない。**
-
-## Mid-turn steering
-
-作業途中で新しい指示が来たら、それをcurrent explicit user instructionとして取り込む。
-
-- affected Goal / scope / AC / IV / TC / Risk / Controlsだけ更新
-- unaffected contractとsame-content Evidenceは保持
-- 全loopを無条件にrestartしない
-- material choiceが新規発生した時だけPREPARE / Human Gateへ戻る
-
-## Task-state isolation
-
-`.loop/templates/task-state.yaml` はtrackedな再利用用schema/templateで、task固有値を記録しない。
-
-task開始時はtemplateを `.loop/state/<task-id>.yaml` へコピーしてcurrent stateとして使う。`.loop/state/` はworktree-local・ignoredで、PRへcommitしない。
-
-Finding Ledger、Coverage Map、telemetryのcurrent valueはcurrent instanceだけを正本とする。過去taskの値をtemplateへ残して次taskへ持ち越さない。
+R4だけではHuman Gateを起動しない。
 
 ## Compact contract
 
-PREPARE後に渡す情報を次へ絞る。
+PREPARE後にstage間で引き継ぐ情報は次へ絞る。
 
-- Goal / scope
-- `ACxx` Acceptance Criteria
-- `IVxx` Preserve / Invariant
+- Goal / In / Out
+- Task type / Complexity / Route / Effects
+- `ACxx` / `IVxx`
 - material assumptions
-- relevant dimensions
 - Risk / Required Controls
 - Coverage Map / `TCxx`
 - open Finding IDs
-- current revision
+- revision
 
-Issue全文・chat履歴・source本文を各stageで再要約しない。sourceは参照だけ残す。
+Issue全文・chat履歴・source本文・前stage Skill全文を各stageで再要約しない。
 
-source再読はcontract conflict / requirements gap / unbounded impact等の具体的理由がある時だけ。
+## Compact role handoff
 
-Conditional Skillもtrigger時だけ読み、使用後はactive contextから外してよい。
-
-## Delegation
-
-same shared diffのwriterは原則1体。
-
-subagent / independent reviewerは、次のどれかにmaterialに効く時だけ使う。
-
-- read-only discoveryを並列化してwall-clockを短縮
-- required independent reviewでcoverageを改善
-- path-disjoint analysisを安全に分離
-
-cheap sequential work、simple search、同じEvidenceの重複要約には使わない。
-R4だけを理由にreviewer / specialist数を増やさない。
-
-## Requirements completeness
-
-runtime behavior変更では一度だけ次を`relevant` / `not_applicable`へ分類する。
-
-- happy path
-- boundary
-- error / failure
-- empty / loading
-- auth / ownership
-- persistence / state transition
-- caller compatibility
-- concurrency / idempotency
-- navigation / accessibility
-
-relevantなものだけAC / IV / TCへ反映する。
-
-Re:Meでは特に次の意味を推測で決めない。
-
-- sealed / unsealed visibility
-- sent letter immutability
-- ownership / authorization
-- exact schedule privacy
-- delivery / notification state
-- reply → future thread semantics
-
-## Coverage Map
+subagent handoffは原則次だけ。
 
 ```text
-AC01 → worker/routes/letters.ts#get → TC01, TC02
-IV01 → notification outbox           → TC03
+Role
+Target
+Acceptance
+Scope
+Known facts
 ```
 
-### Forward coverage
+Known factsには検証済み事実だけを入れる。unknownはoutputとして返す。
 
-`AC / relevant IV → Test / Evidence`
+fixed multi-agent teamは作らず、routeに必要なroleだけ割り当てる。同じshared diffへのwriterは原則1体。
 
-全contractにVerification caseまたは明示NOT_REQUIRED理由を必要とする。
+## Protected behavior
 
-### Reverse coverage
+次へmaterialに触れる変更は少なくとも`standard`へ昇格する。
 
-`behavior-changing diff → AC / IV / design deviation`
+- sealed content privacy
+- sent letter immutability
+- authorization / ownership
+- exact schedule privacy
+- delivery idempotency
+- delivery / notification separation
+- private R2 access
 
-対応しないbehavior changeはscope creepまたはrequirements gapとしてPREPAREへ戻す。
+## Current runtime / legacy
 
-## Requirements gap / Test gap
+Current runtime:
 
-- **requirements gap**: 必要behaviorがAC/IVに無い、またはdiffがcontract外 → PREPAREへ戻る
-- **test gap**: AC/IVは明確やがProofが無い → test/evidenceを追加
+- Auth0
+- Cloudflare Worker / Hono
+- D1 / R2 / Queues / Cron
+- React / TypeScript / Vite
 
-Testが無いことを理由に仕様を無かったことにしない。
+Historical only:
 
-## Fail-fast Verification
+- Convex
+- Supabase
+
+Legacy artifactは削除しない。ADR・migration history・schema comparisonで明示的に必要な時だけ参照する。Supabase CLIはlegacy schema comparison用途として残し、通常runtime / CI / E2Eの前提にしない。
+
+## Verification
 
 ```text
 scopeable static / owning tsconfig
@@ -197,119 +170,43 @@ required functional Playwright
 repo-wide regression = CI Aftercare
 ```
 
-material failureがあれば無意味な下流checkを止める。
-
-same contentのEvidenceは再利用し、content deltaが無効化した範囲だけ再検証する。
-
-required checksが通った後にcheckを広げたり繰り返したりするのは、次の時だけ。
-
-- new content change
-- material failure
-- unresolved concern
-- Required Controlが追加Evidenceを要求
-
-reversible / low-impact変更では、implementation detailを鏡写しするだけの新規testを要求しない。observable AC/IVをmaterialに証明するtestだけ追加する。
-
-ただしRe:Meのprotected behaviorやrequired browser E2Eをこの方針で省略しない。
-
-### Re:Me browser E2E
-
-critical E2Eの下限:
-
-1. authenticated session → draft → send
-2. sealed letter arrival → open
-3. open → reply → send to future
-
-この3本は上限ではない。user-visible画面・遷移・操作を追加/変更したら、その画面を踏むPlaywrightを追加する。
-
-変更していない別画面のE2E成功をEvidenceにしない。
-
-## Omission-first Review
-
-通常のindependent reviewerは最大1体。
-
-Reviewerへ渡すのはcompact packetだけ。
-
-最初に探すもの:
-
-- AC/IVに実装surfaceが無い
-- AC/IVにEvidenceが無い
-- diffがAC/IV/design deviationへ対応しない
-- relevant dimensionのTCが無い
-- 必要なboundary / denial / failureが抜けている
-- Preserve経路を壊すcaller / validator / persistence経路
-- scope外behavior change
-
-具体的不足が出た時だけsource探索を広げる。
-Specialist追加はmaterially distinctなControlがある時だけ。R4だけを理由に増やさない。
+material failureがあれば無意味な下流checkを止める。same-content Evidenceは再利用し、content deltaが無効化した範囲だけ再検証する。
 
 ## Finding Ledger
 
-current task instance（`.loop/state/<task-id>.yaml`）の `findings[]` が唯一の正本。
+Verification / Review / Security / CI / Human reviewのfindingは、current task instanceの`findings[]`へ統合する。
 
-requirements gap / test gap / Review / CI findingを別表へ複製しない。
+同じfindingをstageごとに別recordへ増殖させない。protected domain findingはAgent単独でdeferしない。
 
-同じfindingはstable IDの同じrecordを更新する。
+## Task-state isolation
 
-## Timing telemetry
+`.loop/templates/task-state.yaml`はschema only。task固有値を入れない。
 
-stage開始・終了と少数counterだけ記録する。
+task開始時に`.loop/state/<task-id>.yaml`へコピーし、current instanceはcommitしない。
 
-```text
-PREPARE        92s
-IMPLEMENT     310s
-VERIFY        184s
-REVIEW         61s
-DELIVER        22s
-AFTERCARE     240s  (external wait 205s)
-```
+`pnpm loop:check-task-state-template`はtracked template変更を明示schema changeとして扱い、current instanceのstagingを拒否する。
 
-主な値:
+## Process Learning
 
-- started / finished / elapsed
-- external wait + reason
-- source reads / skill loads
-- changed files
-- AC / IV / TC / Controls数
-- findings / retries / full suite runs / review cycles
+Process Learningはevent-driven。
 
-DONE時にRisk・Spec Confidence・task sizeと一緒にcompact summaryを表示する。
+改善候補は追加手順より先に、次を検討する。
 
-時間だけで良し悪しを決めない。CI / Human Gate / external service待ちは可能ならexternal waitへ分離する。
+- 削除
+- 統合
+- 遅延ロード
+- 順序変更
+- Evidence再利用
+- cheap checkへの置換
+- routingの短縮
 
-Token usageはruntimeが正確に提供する場合だけoptionalで記録する。
+評価dataを将来導入する場合も、dataはルール/権限ではなくProcess LearningのEvidenceとして扱う。
 
-Telemetryだけを理由にProcess Learningを起動しない。Learning Eventがある時だけ、同程度のRisk / Spec / sizeに対してstage時間やretryの偏りを改善Evidenceとして使う。
+## Non-goals
 
-## Deterministic enforcement
-
-```bash
-pnpm loop:preflight
-pnpm loop:e2e-gate
-pnpm test:loop
-pnpm loop:aftercare
-```
-
-機械判定可能なルールはdocumentだけに依存しない。
-
-ただしscriptと正本contractが矛盾した場合は、scriptへ合わせて仕様を曲げず `.loop/process.yaml` / Requirementsを確認してenforcement側を直す。
-
-## Re:Me invariants kept
-
-軽量化しても削らない。
-
-- C0で実装しない
-- `main`直編集禁止 / dedicated branch
-- shared diff one writer
-- sealed letter access boundary
-- sent letter immutability
-- authorization / ownership boundary
-- delivery idempotency / notification separation
-- private R2 / content privacy
-- forward / reverse coverage
-- required Verification / Review
-- test gapのHuman Gate迂回禁止
-- production / irreversible Human Gate
-- latest PR contentがmerge-readyになるまでAftercare
-
-v5の狙いは**品質Gateを減らすことではなく、意味のない停止・重複・過剰検証を削り、Re:Me固有の重要境界へEvidenceを集中すること**や。
+- LRF/1等の新DSL
+- persona system
+- model/vendor固定routing
+- 全taskのmulti-agent化
+- reviewer数を増やす品質担保
+- production operation自動承認
