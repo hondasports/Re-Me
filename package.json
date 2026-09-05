@@ -26,6 +26,7 @@
     "d1:migrations:apply:local": "wrangler d1 migrations apply re-me-local --local",
     "test:loop": "vitest run --config vitest.loop.config.mjs",
     "loop:preflight": "node scripts/check-task-worktree.mjs --require-clean",
+    "loop:check-agent-os": "node scripts/check-agent-os-contract.mjs",
     "loop:check-task-state-template": "node scripts/check-task-state-template.mjs --staged",
     "loop:e2e-env": "node scripts/sync-worktree-e2e-env.mjs",
     "loop:e2e-gate": "node scripts/check-local-e2e-gate.mjs",
