@@ -24,7 +24,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "d1:migrations:apply:local": "wrangler d1 migrations apply re-me-local --local",
-    "test:loop": "vitest run --config vitest.loop.config.mjs",
+    "test:loop": "pnpm loop:check-agent-os && vitest run --config vitest.loop.config.mjs",
     "loop:preflight": "node scripts/check-task-worktree.mjs --require-clean",
     "loop:check-agent-os": "node scripts/check-agent-os-contract.mjs",
     "loop:check-task-state-template": "node scripts/check-task-state-template.mjs --staged",
