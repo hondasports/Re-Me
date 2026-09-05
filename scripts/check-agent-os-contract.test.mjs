@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest'
 
-import { evaluateAgentOsContract } from "./check-agent-os-contract.mjs";
+import { evaluateAgentOsContract } from './check-agent-os-contract.mjs'
 
 const validAgentOs = `routes:
   read_only:
@@ -36,7 +36,7 @@ const validAgentOs = `routes:
       - delivery
       - pr_aftercare
       - done
-`;
+`
 
 const validProcess = `agent_os: .loop/agent-os.yaml
 runtime_boundary:
@@ -61,7 +61,7 @@ states:
     skill: aftercare
   done:
     terminal: true
-`;
+`
 
 const validTaskState = `orchestration:
   task_type: pending
@@ -74,65 +74,62 @@ const validTaskState = `orchestration:
   route_history: []
 prepare:
   status: pending
-`;
+`
 
-describe("evaluateAgentOsContract", () => {
-  it("accepts the required route/state/orchestration contract", () => {
+describe('evaluateAgentOsContract', () => {
+  it('accepts the required route/state/orchestration contract', () => {
     expect(
       evaluateAgentOsContract({
         agentOsText: validAgentOs,
         processText: validProcess,
         taskStateText: validTaskState,
       }),
-    ).toMatchObject({ ok: true, errors: [] });
-  });
+    ).toMatchObject({ ok: true, errors: [] })
+  })
 
-  it("rejects an unknown state referenced by a route", () => {
+  it('rejects an unknown state referenced by a route', () => {
     const result = evaluateAgentOsContract({
-      agentOsText: validAgentOs.replace("      - done\n", "      - imaginary_state\n"),
+      agentOsText: validAgentOs.replace('      - done\n', '      - imaginary_state\n'),
       processText: validProcess,
       taskStateText: validTaskState,
-    });
-    expect(result.ok).toBe(false);
+    })
+    expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "route read_only references unknown process state: imaginary_state",
-    );
-  });
+      'route read_only references unknown process state: imaginary_state',
+    )
+  })
 
-  it("rejects a missing required route", () => {
-    const agentOsWithoutDeep = validAgentOs.replace(
-      /  deep:\n(?:    .*\n|      .*\n)*/,
-      "",
-    );
+  it('rejects a missing required route', () => {
+    const agentOsWithoutDeep = validAgentOs.replace(/  deep:\n(?:    .*\n|      .*\n)*/, '')
     const result = evaluateAgentOsContract({
       agentOsText: agentOsWithoutDeep,
       processText: validProcess,
       taskStateText: validTaskState,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain("missing required route: deep");
-  });
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain('missing required route: deep')
+  })
 
-  it("rejects a legacy provider in current runtime", () => {
+  it('rejects a legacy provider in current runtime', () => {
     const result = evaluateAgentOsContract({
       agentOsText: validAgentOs,
       processText: validProcess.replace(
-        "    - d1\n  historical_only:",
-        "    - d1\n    - convex\n  historical_only:",
+        '    - d1\n  historical_only:',
+        '    - d1\n    - convex\n  historical_only:',
       ),
       taskStateText: validTaskState,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain("legacy provider appears in current runtime: convex");
-  });
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain('legacy provider appears in current runtime: convex')
+  })
 
-  it("rejects a missing orchestration field", () => {
+  it('rejects a missing orchestration field', () => {
     const result = evaluateAgentOsContract({
       agentOsText: validAgentOs,
       processText: validProcess,
-      taskStateText: validTaskState.replace("  selected_route: pending\n", ""),
-    });
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain("task-state orchestration field missing: selected_route");
-  });
-});
+      taskStateText: validTaskState.replace('  selected_route: pending\n', ''),
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain('task-state orchestration field missing: selected_route')
+  })
+})
