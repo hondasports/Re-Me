@@ -16,9 +16,7 @@ import {
 
 describe('task-state path classification', () => {
   it('normalizes separators and leading ./', () => {
-    expect(normalizeChangedPath('./.loop\\state\\issue-70.yaml')).toBe(
-      '.loop/state/issue-70.yaml',
-    )
+    expect(normalizeChangedPath('./.loop\\state\\issue-70.yaml')).toBe('.loop/state/issue-70.yaml')
   })
 
   it('recognizes the tracked template and template variants', () => {
