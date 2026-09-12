@@ -102,8 +102,9 @@ token 値を chat、Issue、PR、log に出さへん。
 
 1. `.env.example` を `.env.local` へコピーする
 2. DEV Auth0 public values を設定する
-3. `pnpm exec wrangler d1 migrations apply re-me-local --local` を実行する
-4. `pnpm dev:full` を起動する
+3. `.dev.vars.example` を `.dev.vars` へコピーし、`AUTH0_DOMAIN` と `AUTH0_CLIENT_ID`（または `AUTH0_AUDIENCE`）を設定する。Worker は local でも Auth0 token を `AUTH0_DOMAIN` の JWKS で検証し、audience を `AUTH0_AUDIENCE` または `AUTH0_CLIENT_ID` と照合する。写真や push を触る場合だけ `CAPABILITY_SECRET` / `VAPID_*` も追加する
+4. `pnpm exec wrangler d1 migrations apply re-me-local --local` を実行する
+5. `pnpm dev:full` を起動する
 
 初回の local Worker / R2 / Queue resource は `wrangler.jsonc` の local binding から作る。
 test-only header と force delivery は `APP_ENV=local` の場合だけ有効や。Preview / Production
@@ -130,6 +131,17 @@ Login を完了する。Playwright は `storageState` を `e2e/.auth/` に保存
 - ownership denial、sealed content denial、photo capability expiration
 
 Google OAuth 自体は少数の smoke test で検証し、critical E2E へ毎回含めない。
+
+### task worktree での E2E
+
+`pnpm loop:preflight` は canonical `.env.local` から `E2E_AUTH0_*` だけを同期する。
+worktree で authenticated E2E を動かすには別途次が必要や。
+
+1. worktree の `.env.local` へ `VITE_AUTH0_DOMAIN` / `VITE_AUTH0_CLIENT_ID` を設定する。無いと Auth0 redirect が始まらず auth.setup が timeout する
+2. worktree の `.dev.vars` へ `AUTH0_DOMAIN` / `AUTH0_CLIENT_ID`（または `AUTH0_AUDIENCE`）を設定する。無いと Worker の JWT 検証が失敗して api-session が `error` になる
+3. 新規 worktree では `pnpm d1:migrations:apply:local` で worktree 固有の local D1 へ migration を適用する
+
+いずれも ignore 済みの worktree local file やから commit されへん。値は canonical worktree からコピーしてええが、chat / log / PR へ出さへん。
 
 ## 撤去後の完了条件
 

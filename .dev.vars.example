@@ -1,7 +1,9 @@
 # Worker-only local variables. Keep real values in .dev.vars.
 # Application backend secrets belong in the Worker and stay out of the browser.
 AUTH0_DOMAIN=
+# audience は AUTH0_AUDIENCE を優先し、未設定なら AUTH0_CLIENT_ID（= id_token の aud）と照合する
 AUTH0_AUDIENCE=
+AUTH0_CLIENT_ID=
 CAPABILITY_SECRET=
 VAPID_PRIVATE_KEY=
 

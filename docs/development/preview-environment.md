@@ -31,10 +31,13 @@ Auth0 public valuesの手順は [setup.md](setup.md) の「`VITE_AUTH0_*` の入
 1. `.env.example` を `.env.local` へコピーする
 2. DEVの `VITE_AUTH0_DOMAIN` / `VITE_AUTH0_CLIENT_ID` を設定する。詳しくは [setup.md](setup.md) の「`VITE_AUTH0_*` の入れ方」を見る
 3. `VITE_API_BASE_URL` を空にするとlocal Workerのsame-origin APIを使う。remote Previewを使う場合だけPreview URLを指定する
-4. `pnpm dev:full` または `pnpm dev` を起動する
-5. schemaを更新したら `pnpm exec wrangler d1 migrations apply re-me-local --local` を実行する
+4. `.dev.vars.example` を `.dev.vars` へコピーし、`AUTH0_DOMAIN` と `AUTH0_CLIENT_ID`（または `AUTH0_AUDIENCE`）を設定する。localでもWorkerは Auth0 token を検証する
+5. `pnpm dev:full` または `pnpm dev` を起動する
+6. schemaを更新したら `pnpm exec wrangler d1 migrations apply re-me-local --local` を実行する
 
 Local Workerは `wrangler.jsonc` の `APP_ENV=local`、`E2E_ALLOW_TEST_AUTH=1`、`E2E_ALLOW_FORCE_DELIVERY=1` を使う。test headerはlocal以外では無視される。
+
+task worktreeで local E2E を動かす場合、`.env.local` と `.dev.vars` はworktreeごとに必要や。`pnpm loop:preflight` が同期するのは `E2E_AUTH0_*` だけで、`VITE_AUTH0_*` と `.dev.vars` は各worktreeへ個別に置く。fresh worktreeでは `pnpm d1:migrations:apply:local` も必要や。詳細は [setup.md](setup.md) の「task worktree での E2E」を見る。
 
 Auth0 DEV SPAには通常、次を登録する。
 
