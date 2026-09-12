@@ -100,6 +100,19 @@ export function inboxOpenLabel(sealed: boolean, openedAt: number | null): string
   return inboxOpenState(sealed, openedAt) === 'unopened' ? '未開封' : '開封済み'
 }
 
+export type InboxListTab = 'unopened' | 'opened'
+
+export function filterInboxLettersByTab(
+  letters: InboxLetterMetadata[],
+  tab: InboxListTab,
+): InboxLetterMetadata[] {
+  return letters.filter((letter) => inboxOpenState(letter.sealed, letter.openedAt) === tab)
+}
+
+export function inboxTabEmptyLabel(tab: InboxListTab): string {
+  return tab === 'unopened' ? '未開封の手紙はありません。' : 'まだ開封した手紙はありません。'
+}
+
 export function inboxListItemLabel(
   letter: InboxLetterMetadata,
   now: number,

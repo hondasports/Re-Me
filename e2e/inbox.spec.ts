@@ -31,6 +31,11 @@ test.describe('inbox letters', () => {
     await expect(page.locator(`a[href="/letters/${letterId}"]`)).toContainText('未開封')
     await expect(page.getByText(body)).toHaveCount(0)
 
+    await page.getByRole('tab', { name: '開封済み' }).click()
+    await expect(page.locator(`a[href="/letters/${letterId}"]`)).toHaveCount(0)
+    await page.getByRole('tab', { name: '未開封' }).click()
+    await expect(page.locator(`a[href="/letters/${letterId}"]`)).toContainText('未開封')
+
     await page.locator(`a[href="/letters/${letterId}"]`).click()
     await expect(page.getByRole('heading', { name: '開封する' })).toBeVisible()
     await page.getByRole('button', { name: '開封する' }).click()
@@ -44,6 +49,8 @@ test.describe('inbox letters', () => {
 
     await page.getByRole('link', { name: '届いた手紙へ戻る' }).click()
     await expect(page).toHaveURL(/\/$/)
+    await expect(page.locator(`a[href="/letters/${letterId}"]`)).toHaveCount(0)
+    await page.getByRole('tab', { name: '開封済み' }).click()
     await expect(page.locator(`a[href="/letters/${letterId}"]`)).toContainText('開封済み')
   })
 
@@ -67,6 +74,8 @@ test.describe('inbox letters', () => {
     await page.getByRole('link', { name: '届いた手紙へ戻る' }).click()
     await expect(page).toHaveURL(/\/$/)
     await expect(page.getByText(body)).toHaveCount(0)
+    await expect(page.locator(`a[href="/letters/${letterId}"]`)).toHaveCount(0)
+    await page.getByRole('tab', { name: '開封済み' }).click()
     await expect(page.locator(`a[href="/letters/${letterId}"]`)).toContainText('開封済み')
   })
 })
