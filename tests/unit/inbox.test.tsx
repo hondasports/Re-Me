@@ -14,11 +14,13 @@ import {
   calendarDaysBetween,
   canFetchInboxContent,
   canReplyFromInbox,
+  filterInboxLettersByTab,
   fromYouLabel,
   inboxContentQueryArgs,
   inboxListItemLabel,
   inboxListPhase,
   inboxOpenLabel,
+  inboxTabEmptyLabel,
   msUntilNextCalendarDay,
   needsOpenRitual,
 } from '../../src/features/inbox/model/inbox'
@@ -118,10 +120,23 @@ describe('inbox model', () => {
       letterId: 'letter-open',
     })
   })
+
+  it('filters letters into unopened and opened tabs', () => {
+    const letters = [sealedUnopened, unsealedDelivered]
+
+    expect(filterInboxLettersByTab(letters, 'unopened').map((letter) => letter.letterId)).toEqual([
+      'letter-sealed',
+    ])
+    expect(filterInboxLettersByTab(letters, 'opened').map((letter) => letter.letterId)).toEqual([
+      'letter-open',
+    ])
+    expect(inboxTabEmptyLabel('unopened')).toBe('未開封の手紙はありません。')
+    expect(inboxTabEmptyLabel('opened')).toBe('まだ開封した手紙はありません。')
+  })
 })
 
 describe('InboxLetterList', () => {
-  it('shows loading then empty then the delivered list without letter bodies', () => {
+  it('shows loading then empty states without letter bodies', () => {
     const loading = renderWithRouter(
       <InboxLetterList letters={undefined} now={now} timeZone="UTC" />,
     )
@@ -138,22 +153,66 @@ describe('InboxLetterList', () => {
       ),
     ).toBeInTheDocument()
     expect(empty.getByRole('button', { name: '手紙を書く' })).toBeInTheDocument()
-    empty.unmount()
+  })
 
+  it('lists only unopened letters on the default tab without letter bodies', () => {
     const list = renderWithRouter(
       <InboxLetterList letters={[sealedUnopened, unsealedDelivered]} now={now} timeZone="UTC" />,
     )
+
+    expect(list.getByRole('tab', { name: '未開封' })).toHaveAttribute('aria-selected', 'true')
+    expect(list.getByRole('tab', { name: '開封済み' })).toHaveAttribute('aria-selected', 'false')
     expect(list.getByRole('link', { name: /未開封/ })).toHaveAttribute(
       'href',
       '/letters/letter-sealed',
     )
-    expect(list.getByText('未開封')).toBeInTheDocument()
-    expect(list.getByText('開封済み')).toBeInTheDocument()
     expect(list.getByText('3日前のあなたから')).toBeInTheDocument()
-    expect(list.getByText('今日のあなたから')).toBeInTheDocument()
     expect(list.getByText('今日届きました')).toBeInTheDocument()
+    expect(list.container.querySelector('.inbox-list__unread-dot')).not.toBeNull()
+    expect(list.queryByRole('link', { name: /今日のあなたから/ })).not.toBeInTheDocument()
     expect(list.queryByText('秘密の本文')).not.toBeInTheDocument()
     expect(list.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('lists opened and unsealed letters on the opened tab', async () => {
+    const user = userEvent.setup()
+    const list = renderWithRouter(
+      <InboxLetterList letters={[sealedUnopened, unsealedDelivered]} now={now} timeZone="UTC" />,
+    )
+
+    await user.click(list.getByRole('tab', { name: '開封済み' }))
+
+    expect(list.getByRole('tab', { name: '開封済み' })).toHaveAttribute('aria-selected', 'true')
+    expect(list.getByRole('tab', { name: '未開封' })).toHaveAttribute('aria-selected', 'false')
+    expect(list.getByRole('link', { name: /開封済み/ })).toHaveAttribute(
+      'href',
+      '/letters/letter-open',
+    )
+    expect(list.getByText('今日のあなたから')).toBeInTheDocument()
+    expect(list.queryByRole('link', { name: /3日前のあなたから/ })).not.toBeInTheDocument()
+    expect(list.container.querySelector('.inbox-list__unread-dot')).toBeNull()
+  })
+
+  it('switches tabs with arrow keys', async () => {
+    const user = userEvent.setup()
+    const list = renderWithRouter(
+      <InboxLetterList letters={[sealedUnopened]} now={now} timeZone="UTC" />,
+    )
+
+    list.getByRole('tab', { name: '未開封' }).focus()
+    await user.keyboard('{ArrowRight}')
+
+    expect(list.getByRole('tab', { name: '開封済み' })).toHaveAttribute('aria-selected', 'true')
+    expect(list.getByRole('tab', { name: '開封済み' })).toHaveFocus()
+  })
+
+  it('shows an empty message when the selected tab has no letters', () => {
+    const list = renderWithRouter(
+      <InboxLetterList letters={[unsealedDelivered]} now={now} timeZone="UTC" />,
+    )
+
+    expect(list.getByText('未開封の手紙はありません。')).toBeInTheDocument()
+    expect(list.queryByRole('link', { name: /あなたから/ })).not.toBeInTheDocument()
   })
 })
 

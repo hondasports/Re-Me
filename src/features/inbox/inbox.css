@@ -262,14 +262,14 @@
 .inbox-list__tab {
   position: relative;
   padding: 0.55rem var(--re-me-space-2) 0.7rem;
+  border: 0;
+  background: none;
   color: var(--re-me-color-ink-muted);
+  font-family: inherit;
   font-size: var(--re-me-font-size-sm);
   font-weight: 600;
   text-align: center;
-}
-
-.inbox-list__tab::before {
-  content: attr(data-label);
+  cursor: pointer;
 }
 
 .inbox-list__tab--active {
@@ -285,6 +285,13 @@
   border-radius: var(--re-me-radius-pill);
   background: var(--re-me-color-cta-end);
   content: '';
+}
+
+.inbox-list__empty {
+  padding: var(--re-me-space-4) var(--re-me-space-2);
+  color: var(--re-me-color-ink-muted);
+  font-size: var(--re-me-font-size-sm);
+  text-align: center;
 }
 
 .inbox-list__items {
