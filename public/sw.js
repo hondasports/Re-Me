@@ -26,5 +26,14 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  event.waitUntil(self.clients.openWindow('/'))
+  event.waitUntil(openNotificationInbox())
 })
+
+async function openNotificationInbox() {
+  const opened = await self.clients.openWindow('/')
+  if (!opened) return
+
+  // Android Chromeが既存ページを再利用しても、アプリ側で最新状態を取得する。
+  opened.postMessage({ type: 're-me:notification-click' })
+  await opened.focus().catch(() => undefined)
+}

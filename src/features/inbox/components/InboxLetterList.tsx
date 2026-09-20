@@ -1,9 +1,10 @@
 import { Button } from '@mantine/core'
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { NavIcon } from '../../../app/BottomNav'
 import { StatusScreen } from '../../../shared/components/StatusScreen'
+import { INBOX_NOTIFICATION_REFRESHED } from '../../settings/model/push'
 import {
   arrivedTodayLabel,
   filterInboxLettersByTab,
@@ -34,6 +35,14 @@ export function InboxLetterList({
 }) {
   const navigate = useNavigate()
   const [tab, setTab] = useState<InboxListTab>('unopened')
+  useEffect(() => {
+    function showArrival(event: Event): void {
+      const nextTab = (event as CustomEvent<unknown>).detail
+      if (nextTab === 'unopened' || nextTab === 'opened') setTab(nextTab)
+    }
+    window.addEventListener(INBOX_NOTIFICATION_REFRESHED, showArrival)
+    return () => window.removeEventListener(INBOX_NOTIFICATION_REFRESHED, showArrival)
+  }, [])
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const phase = inboxListPhase(letters)
 
