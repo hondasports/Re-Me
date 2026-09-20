@@ -29,12 +29,14 @@ afterEach(() => {
 
 type Arrival = Pick<ApiLetterMetadata, 'letterId' | 'deliveredAt' | 'sealed' | 'openedAt'>
 
-function renderInbox() {
+function renderInbox(
+  queryFnImpl: (delivered: Arrival[]) => Promise<Arrival[]> = async (delivered) => delivered,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
   let delivered: Arrival[] = []
-  const queryFn = vi.fn(async () => delivered)
+  const queryFn = vi.fn(() => queryFnImpl(delivered))
   const draftKey = [api.letters.getDraft.key, { letterId: 'draft' }]
   client.setQueryData(draftKey, { body: '書きかけの本文' })
   const hook = renderHook(
@@ -120,6 +122,108 @@ describe('notification arrival refresh', () => {
       await waitFor(() => expect(inbox.result.current).toEqual(['new-letter']))
     },
   )
+
+  it('ignores an older notification result when a newer notification is still refreshing', async () => {
+    const inbox = renderInbox()
+    await waitFor(() => expect(inbox.result.current).toEqual([]))
+    let resolveFirst!: (letters: Arrival[]) => void
+    let resolveSecond!: (letters: Arrival[]) => void
+    inbox.queryFn
+      .mockImplementationOnce(
+        () =>
+          new Promise<Arrival[]>((resolve) => {
+            resolveFirst = resolve
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Arrival[]>((resolve) => {
+            resolveSecond = resolve
+          }),
+      )
+    const dispatch = vi.spyOn(window, 'dispatchEvent')
+    act(() => {
+      notificationMessage()
+      notificationMessage()
+    })
+    expect(inbox.queryFn).toHaveBeenCalledTimes(3)
+    act(() =>
+      resolveFirst([{ letterId: 'stale-letter', deliveredAt: 2, sealed: false, openedAt: 2 }]),
+    )
+    act(() =>
+      resolveSecond([{ letterId: 'new-letter', deliveredAt: 3, sealed: true, openedAt: null }]),
+    )
+    await waitFor(() => expect(inbox.result.current).toEqual(['new-letter']))
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: INBOX_NOTIFICATION_REFRESHED, detail: 'unopened' }),
+    )
+  })
+
+  it('starts a fresh notification fetch while the initial inbox fetch is still pending', async () => {
+    let resolveInitial!: (letters: Arrival[]) => void
+    let resolveFirst!: (letters: Arrival[]) => void
+    let resolveSecond!: (letters: Arrival[]) => void
+    let call = 0
+    const inbox = renderInbox(() => {
+      call += 1
+      if (call === 1)
+        return new Promise<Arrival[]>((resolve) => {
+          resolveInitial = resolve
+        })
+      if (call === 2)
+        return new Promise<Arrival[]>((resolve) => {
+          resolveFirst = resolve
+        })
+      return new Promise<Arrival[]>((resolve) => {
+        resolveSecond = resolve
+      })
+    })
+    await waitFor(() => expect(inbox.queryFn).toHaveBeenCalledTimes(1))
+    const dispatch = vi.spyOn(window, 'dispatchEvent')
+    act(() => {
+      notificationMessage()
+      notificationMessage()
+    })
+    await waitFor(() => expect(inbox.queryFn).toHaveBeenCalledTimes(3))
+    act(() => {
+      resolveInitial([{ letterId: 'initial-letter', deliveredAt: 1, sealed: false, openedAt: 1 }])
+      resolveFirst([{ letterId: 'stale-letter', deliveredAt: 2, sealed: false, openedAt: 2 }])
+      resolveSecond([{ letterId: 'new-letter', deliveredAt: 3, sealed: true, openedAt: null }])
+    })
+    await waitFor(() => expect(inbox.result.current).toEqual(['new-letter']))
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: INBOX_NOTIFICATION_REFRESHED, detail: 'unopened' }),
+    )
+  })
+
+  it('does not let another delivered-list query release the notification refresh', async () => {
+    const inbox = renderInbox()
+    await waitFor(() => expect(inbox.result.current).toEqual([]))
+    const otherQuery = renderHook(
+      () =>
+        useQuery({
+          queryKey: [api.letters.listDeliveredLetters.key, { cursor: 'other' }],
+          queryFn: async () => {
+            throw new Error('other cursor failed')
+          },
+        }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={inbox.client}>{children}</QueryClientProvider>
+        ),
+      },
+    )
+    inbox.deliver()
+    const dispatch = vi.spyOn(window, 'dispatchEvent')
+    act(() => notificationMessage())
+    await waitFor(() => expect(inbox.result.current).toEqual(['new-letter']))
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: INBOX_NOTIFICATION_REFRESHED, detail: 'unopened' }),
+    )
+    otherQuery.unmount()
+  })
 
   it.each([
     [true, 'unopened'],
