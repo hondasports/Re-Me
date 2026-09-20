@@ -14,62 +14,74 @@ const arrivalQueryKeys = new Set<string>([
   api.attachments.listReadableAttachments.key,
   api.threads.getThread.key,
 ])
+const deliveredLettersQueryKey = [api.letters.listDeliveredLetters.key, null] as const
+
+function isDeliveredLettersQuery(query: { queryKey: readonly unknown[] }): boolean {
+  return (
+    query.queryKey.length === deliveredLettersQueryKey.length &&
+    query.queryKey[0] === deliveredLettersQueryKey[0] &&
+    query.queryKey[1] === deliveredLettersQueryKey[1]
+  )
+}
 
 /** 通知クリックと画面復帰で、到着によって変化するデータを更新する。 */
 export function useNotificationRefresh(queryClient: QueryClient): void {
   useEffect(() => {
-    let awaitingArrival = false
-
-    const unsubscribeQueryCache = queryClient.getQueryCache().subscribe((event) => {
-      if (
-        !awaitingArrival ||
-        event.type !== 'updated' ||
-        event.query.queryKey[0] !== api.letters.listDeliveredLetters.key
-      )
-        return
-      if (event.action.type === 'error') {
-        awaitingArrival = false
-        return
-      }
-      // オフラインで一時停止した取得も、通信再開後の成功を待ってから表示を切り替える。
-      if (event.action.type !== 'success' || event.action.manual) return
-      awaitingArrival = false
-      const letters = queryClient.getQueryData<ApiLetterMetadata[]>([
-        api.letters.listDeliveredLetters.key,
-        null,
-      ])
-      const latest = letters?.reduce<ApiLetterMetadata | undefined>(
-        (newest, letter) =>
-          !newest || (letter.deliveredAt ?? 0) > (newest.deliveredAt ?? 0) ? letter : newest,
-        undefined,
-      )
-      if (latest) {
-        window.dispatchEvent(
-          new CustomEvent(INBOX_NOTIFICATION_REFRESHED, {
-            detail: inboxOpenState(latest.sealed, latest.openedAt),
-          }),
-        )
-      }
-    })
+    let active = true
+    let notificationSequence = 0
+    let pendingNotificationSequence: number | undefined
 
     function refresh(): Promise<void> {
-      return queryClient.invalidateQueries({
-        predicate: (query) => arrivalQueryKeys.has(String(query.queryKey[0])),
+      const deliveredLettersQuery = queryClient.getQueryCache().find({
+        exact: true,
+        queryKey: deliveredLettersQueryKey,
       })
+      // Query.fetchはキャッシュが未取得だと既存fetchを再利用するため、通知更新では先に明示的に中断する。
+      deliveredLettersQuery?.cancel({ silent: true })
+      const deliveredLettersRefresh = deliveredLettersQuery?.fetch(undefined, {
+        cancelRefetch: false,
+      })
+      const otherArrivalRefresh = queryClient.invalidateQueries({
+        predicate: (query) =>
+          arrivalQueryKeys.has(String(query.queryKey[0])) &&
+          (!deliveredLettersQuery || !isDeliveredLettersQuery(query)),
+      })
+      return Promise.all([otherArrivalRefresh, deliveredLettersRefresh]).then(() => undefined)
     }
 
     function handleNotification(): void {
-      awaitingArrival = true
-      void refresh().catch(() => undefined)
+      const sequence = ++notificationSequence
+      pendingNotificationSequence = sequence
+      void refresh()
+        .then(() => {
+          if (!active || pendingNotificationSequence !== sequence) return
+          pendingNotificationSequence = undefined
+          const letters = queryClient.getQueryData<ApiLetterMetadata[]>(deliveredLettersQueryKey)
+          const latest = letters?.reduce<ApiLetterMetadata | undefined>(
+            (newest, letter) =>
+              !newest || (letter.deliveredAt ?? 0) > (newest.deliveredAt ?? 0) ? letter : newest,
+            undefined,
+          )
+          if (latest) {
+            window.dispatchEvent(
+              new CustomEvent(INBOX_NOTIFICATION_REFRESHED, {
+                detail: inboxOpenState(latest.sealed, latest.openedAt),
+              }),
+            )
+          }
+        })
+        .catch(() => {
+          if (pendingNotificationSequence === sequence) pendingNotificationSequence = undefined
+        })
     }
 
     function handleFocus(): void {
-      if (!awaitingArrival && document.visibilityState === 'visible')
+      if (!pendingNotificationSequence && document.visibilityState === 'visible')
         void refresh().catch(() => undefined)
     }
 
     function handlePageShow(event: PageTransitionEvent): void {
-      if (!awaitingArrival && event.persisted) void refresh().catch(() => undefined)
+      if (!pendingNotificationSequence && event.persisted) void refresh().catch(() => undefined)
     }
 
     const unsubscribe = subscribeToNotificationClicks(handleNotification)
@@ -77,8 +89,8 @@ export function useNotificationRefresh(queryClient: QueryClient): void {
     window.addEventListener('pageshow', handlePageShow)
 
     return () => {
+      active = false
       unsubscribe()
-      unsubscribeQueryCache()
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('pageshow', handlePageShow)
     }
