@@ -8,6 +8,7 @@ import { RouterProvider } from 'react-router'
 import { AuthRuntimeProvider } from '../features/auth/AuthRuntimeProvider'
 import { unconfiguredAuthRuntime, type AuthRuntime } from '../features/auth/auth-runtime'
 import { LiveAuthRuntimeProvider } from '../features/auth/LiveAuthRuntimeProvider'
+import { useNotificationRefresh } from '../features/settings/model/useNotificationRefresh'
 import { createAppRouter } from '../router'
 import {
   createAuth0RedirectUri,
@@ -28,6 +29,7 @@ interface AppProvidersProps {
 export function AppProviders({ children, runtime }: AppProvidersProps) {
   const [router] = useState(() => createAppRouter())
   const [queryClient] = useState(() => new QueryClient())
+  useNotificationRefresh(queryClient)
   const tree = children ?? <RouterProvider router={router} />
 
   return (

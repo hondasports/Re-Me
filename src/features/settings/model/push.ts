@@ -1,4 +1,5 @@
 export const NOTIFICATION_TAP_PATH = '/'
+export const INBOX_NOTIFICATION_REFRESHED = 're-me:inbox-notification-refreshed'
 export const ARRIVAL_NOTIFICATION_TITLE = 'Re:Me'
 export const PUSH_PERMISSION_COPY =
   '届いた手紙を忘れないよう、静かな通知だけ送ります。本文や写真は通知に出しません。'
@@ -52,6 +53,24 @@ export function readPushClientCapability(
 
 export function notificationTapPath(): string {
   return NOTIFICATION_TAP_PATH
+}
+
+/** Service Workerから届いた、内容を含まない通知クリックだけを購読する。 */
+export function subscribeToNotificationClicks(onClick: () => void): () => void {
+  const serviceWorker = navigator.serviceWorker
+  function handleMessage(event: MessageEvent<unknown>): void {
+    if (
+      event.origin === window.location.origin &&
+      typeof event.data === 'object' &&
+      event.data !== null &&
+      'type' in event.data &&
+      event.data.type === 're-me:notification-click'
+    ) {
+      onClick()
+    }
+  }
+  serviceWorker?.addEventListener('message', handleMessage)
+  return () => serviceWorker?.removeEventListener('message', handleMessage)
 }
 
 export function shouldReleaseBrowserPush(owned: boolean): boolean {
